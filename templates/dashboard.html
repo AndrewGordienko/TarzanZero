@@ -1,0 +1,216 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CartPole Training Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-gap: 20px;
+        }
+        .box {
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .status {
+            padding: 10px;
+            background-color: #e0f7fa;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: bold;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+        th {
+            background-color: #f5f5f5;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+    </style>
+</head>
+<body>
+    <h1>CartPole Training Dashboard</h1>
+    <div class="status" id="status">Status: Initializing...</div>
+    
+    <div class="container">
+        <div class="box">
+            <h2>Hyperparameters</h2>
+            <table id="hyperparameters">
+                <tr>
+                    <th>Parameter</th>
+                    <th>Value</th>
+                </tr>
+            </table>
+        </div>
+        
+        <div class="box">
+            <h2>Recent Episodes</h2>
+            <table id="episodes">
+                <tr>
+                    <th>Episode</th>
+                    <th>Total Reward</th>
+                    <th>Best Reward</th>
+                    <th>Policy Loss</th>
+                    <th>Value Loss</th>
+                    <th>Entropy</th>
+                </tr>
+            </table>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="box">
+            <h2>Rewards</h2>
+            <div class="chart-container">
+                <canvas id="rewardsChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="box">
+            <h2>Losses</h2>
+            <div class="chart-container">
+                <canvas id="lossesChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize charts
+        const rewardsCtx = document.getElementById('rewardsChart').getContext('2d');
+        const rewardsChart = new Chart(rewardsCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Total Reward',
+                    data: [],
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }, {
+                    label: 'Best Reward',
+                    data: [],
+                    borderColor: 'rgb(255, 99, 132)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+        
+        const lossesCtx = document.getElementById('lossesChart').getContext('2d');
+        const lossesChart = new Chart(lossesCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Policy Loss',
+                    data: [],
+                    borderColor: 'rgb(54, 162, 235)',
+                    tension: 0.1
+                }, {
+                    label: 'Value Loss',
+                    data: [],
+                    borderColor: 'rgb(255, 159, 64)',
+                    tension: 0.1
+                }, {
+                    label: 'Entropy',
+                    data: [],
+                    borderColor: 'rgb(153, 102, 255)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+        
+        // Function to update the dashboard
+        function updateDashboard() {
+            $.getJSON('/data', function(data) {
+                // Update status
+                $('#status').text('Status: ' + data.status);
+                
+                // Update hyperparameters table
+                $('#hyperparameters').empty();
+                $('#hyperparameters').append('<tr><th>Parameter</th><th>Value</th></tr>');
+                for (const [key, value] of Object.entries(data.hyperparameters)) {
+                    $('#hyperparameters').append(`<tr><td>${key}</td><td>${value}</td></tr>`);
+                }
+                
+                // Update episodes table
+                $('#episodes').empty();
+                $('#episodes').append('<tr><th>Episode</th><th>Total Reward</th><th>Best Reward</th><th>Policy Loss</th><th>Value Loss</th><th>Entropy</th></tr>');
+                data.recent_episodes.forEach(episode => {
+                    $('#episodes').append(`<tr>
+                        <td>${episode.episode}</td>
+                        <td>${episode.total_reward.toFixed(2)}</td>
+                        <td>${episode.best_reward.toFixed(2)}</td>
+                        <td>${episode.policy_loss.toFixed(4)}</td>
+                        <td>${episode.value_loss.toFixed(4)}</td>
+                        <td>${episode.entropy.toFixed(4)}</td>
+                    </tr>`);
+                });
+                
+                // Update charts
+                rewardsChart.data.labels = data.episodes;
+                rewardsChart.data.datasets[0].data = data.total_rewards;
+                rewardsChart.data.datasets[1].data = data.best_rewards;
+                rewardsChart.update();
+                
+                lossesChart.data.labels = data.episodes;
+                lossesChart.data.datasets[0].data = data.policy_losses;
+                lossesChart.data.datasets[1].data = data.value_losses;
+                lossesChart.data.datasets[2].data = data.entropies;
+                lossesChart.update();
+            });
+        }
+        
+        // Update dashboard every second
+        setInterval(updateDashboard, 1000);
+        
+        // Initial update
+        updateDashboard();
+    </script>
+</body>
+</html>
+    

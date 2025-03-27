@@ -1,0 +1,10 @@
+numpy>=1.20.0
+torch>=1.10.0
+gymnasium>=0.26.0
+gym>=0.21.0
+optuna>=2.10.0
+matplotlib>=3.5.0
+flask>=2.0.0
+flask-cors>=3.0.10
+colorama>=0.4.4
+rich>=10.0.0 

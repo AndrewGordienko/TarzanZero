@@ -1,0 +1,28 @@
+ACTOR_NETWORK = {
+    "FC1_DIMS": 1024,
+    "FC2_DIMS": 512,
+}
+
+CRITIC_NETWORK = {
+    "FC1_DIMS": 1024,
+    "FC2_DIMS": 512,
+}
+
+AGENT = {
+    "ACTOR_LR": 5e-5,
+    "CRITIC_LR": 3e-4,
+    "ENTROPY_COEF_INIT": 0.08,
+    "ENTROPY_COEF_DECAY": 0.995,
+    "GAMMA": 0.995,
+    "LAMBDA": 0.97,
+    "KL_DIV_THRESHOLD": 0.01,
+    "BATCH_SIZE": 1024,
+    "N_EPOCHS": 2000,
+    "DEVICE": "cuda",
+    "CLIP_RATIO": 0.15,
+    "ENTROPY_COEF": 0.005,
+    "VALUE_LOSS_COEF": 0.5,
+    "UPDATE_EPOCHS": 6,
+    "MAX_GRAD_NORM": 0.5,
+}
+
