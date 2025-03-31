@@ -1,0 +1,151 @@
+<!doctype html>
+<html>
+<head>
+    <title>CartPole PPO Training Results</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        h2 {
+            color: #333;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+            color: #333;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        .stat-card {
+            background-color: #f5f5f5;
+            border-radius: 5px;
+            padding: 15px;
+            width: 23%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .stat-label {
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+    </style>
+    <script>
+        // Track the last known episode for smooth updates
+        let lastEpisode = 0;
+        
+        async function fetchData() {
+            try {
+                const response = await fetch("/data");
+                const data = await response.json();
+                
+                if (data.length === 0) return;
+                
+                // Update summary stats
+                document.getElementById("current-episode").innerText = data[data.length-1].episode;
+                document.getElementById("max-reward").innerText = data[data.length-1].max_reward;
+                document.getElementById("avg-samples").innerText = data[data.length-1].avg_samples;
+                document.getElementById("training-time").innerText = 
+                    data[data.length-1].max_score_time ? data[data.length-1].max_score_time + "s" : "N/A";
+                
+                const table = document.getElementById("results-body");
+                
+                // Only update new rows rather than redrawing entire table
+                for (let i = lastEpisode; i < data.length; i++) {
+                    const row = data[i];
+                    
+                    // Check if row already exists
+                    const existingRow = document.getElementById(`row-${row.episode}`);
+                    if (existingRow) {
+                        // Update existing row
+                        existingRow.innerHTML = `
+                            <td>${row.episode}</td>
+                            <td>${row.max_reward}</td>
+                            <td>${row.avg_samples}</td>
+                            <td>${row.duration !== null ? row.duration + "s" : "N/A"}</td>
+                            <td>${row.max_score_time !== null ? row.max_score_time + "s" : "N/A"}</td>
+                        `;
+                    } else {
+                        // Create new row
+                        const tr = document.createElement("tr");
+                        tr.id = `row-${row.episode}`;
+                        tr.innerHTML = `
+                            <td>${row.episode}</td>
+                            <td>${row.max_reward}</td>
+                            <td>${row.avg_samples}</td>
+                            <td>${row.duration !== null ? row.duration + "s" : "N/A"}</td>
+                            <td>${row.max_score_time !== null ? row.max_score_time + "s" : "N/A"}</td>
+                        `;
+                        table.appendChild(tr);
+                    }
+                }
+                
+                // Update last episode seen
+                if (data.length > 0) {
+                    lastEpisode = data[data.length-1].episode;
+                }
+            } catch (error) {
+                console.error("Error fetching data:", error);
+            }
+        }
+
+        // Poll for updates every 500ms for smoother updates
+        setInterval(fetchData, 500);
+        window.onload = fetchData;
+    </script>
+</head>
+<body>
+    <h2>CartPole PPO Training Results</h2>
+    
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-value" id="current-episode">0</div>
+            <div class="stat-label">Current Episode</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="max-reward">0</div>
+            <div class="stat-label">High Score</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="avg-samples">0</div>
+            <div class="stat-label">Avg Samples/Episode</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="training-time">0s</div>
+            <div class="stat-label">Best Score Time</div>
+        </div>
+    </div>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Episode</th>
+                <th>High Score</th>
+                <th>Avg Samples/Episode</th>
+                <th>Training Duration</th>
+                <th>Max Score Time</th>
+            </tr>
+        </thead>
+        <tbody id="results-body"></tbody>
+    </table>
+</body>
+</html>
