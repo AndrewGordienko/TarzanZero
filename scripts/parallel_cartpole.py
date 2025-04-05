@@ -12,9 +12,19 @@ from rich.table import Table
 from rich.live import Live
 from rich import box
 from rich.console import Console
+from rich.pretty import pprint
 import optuna
+import matplotlib.pyplot as plt
 
+plt.ion()  # Interactive mode ON
+fig, ax = plt.subplots(figsize=(7, 4))  # Use subplot for persistent access
+plt.subplots_adjust(right=0.75)
 multiprocessing.set_start_method("fork", force=True)
+best_runs = {}  # {n_env: (avg_curve, max_curve)}
+best_avg_reward = -np.inf
+best_max_reward = -np.inf
+best_actor_avg = None
+best_actor_max = None
 
 def objective(trial, n_env):
     hyperparams = {
@@ -33,8 +43,16 @@ def objective(trial, n_env):
         "MAX_GRAD_NORM": trial.suggest_float("MAX_GRAD_NORM", 0.1, 1.0),
     }
 
-    score = multi_trials(n_env=n_env, hyperparams=hyperparams)
-    return score
+    # Run training and get both max and average reward
+    max_reward, avg_reward, avg_curve, max_curve, agent = multi_trials(n_env=n_env, hyperparams=hyperparams)
+    trial.set_user_attr("avg_curve", avg_curve)
+    trial.set_user_attr("max_curve", max_curve)
+
+    # Save metadata for inspection
+    trial.set_user_attr("max_reward", max_reward)
+    trial.set_user_attr("hyperparams", hyperparams)
+
+    return avg_reward
 
 def make_env():
     return create_continuous_cartpole_env()
@@ -51,6 +69,9 @@ def multi_trials(n_env, hyperparams):
     samples_collected = 0
     max_reward = 0
     training_start = time.time()
+    episode_rewards = []
+    temp_avg = []
+    temp_best = []
 
     input_dims = env.observation_space.shape[0]
     n_actions = env.action_space.shape[0]
@@ -86,6 +107,10 @@ def multi_trials(n_env, hyperparams):
             if current_max > max_reward:
                 max_reward = current_max
                 max_score_time = time.time() - training_start
+            episode_rewards.append(np.mean(env_rewards))
+            avg_reward = np.mean(episode_rewards)
+            temp_avg.append(avg_reward)
+            temp_best.append(max_reward)
 
             if False not in dones or agent.buffer.size() >= agent.batch_size:
                 start_time = time.time()
@@ -95,6 +120,7 @@ def multi_trials(n_env, hyperparams):
             row_data = [
                 f"[white]{episode}[/white]",
                 f"[green]{max_reward:.2f}[/green]",
+                f"[blue]{avg_reward:.2f}[/blue]",
                 f"[white]{samples_collected / episode:.2f}[/white]",
                 f"[white]{f'{duration:.2f}s' if duration is not None else 'N/A'}[/white]",
                 f"[white]{max_score_time:.2f}s[/white]",
@@ -114,6 +140,7 @@ def multi_trials(n_env, hyperparams):
             )
             table.add_column("Episode", justify="center")
             table.add_column("High Score", justify="center")
+            table.add_column("Average Reward", justify="center")
             table.add_column("Avg Samples/Episode", justify="center")
             table.add_column("Duration", justify="center")
             table.add_column("Max Score Time", justify="center")
@@ -128,12 +155,61 @@ def multi_trials(n_env, hyperparams):
                 break
 
     vec_env.close()
-    return max_reward
+    global best_avg_reward, best_max_reward, best_actor_avg, best_actor_max
 
-trials = [1, 5, 10, 50, 100, 500, 1000]
+    if avg_reward > best_avg_reward:
+        best_avg_reward = avg_reward
+        best_actor_avg = deepcopy(agent.actor.state_dict())
+
+    if max_reward > best_max_reward:
+        best_max_reward = max_reward
+        best_actor_max = deepcopy(agent.actor.state_dict())
+
+    return max_reward, avg_reward, temp_avg, temp_best, agent
+
+trials = [1, 5, 10, 15, 20, 25]
+colors = ["red", "orange", "goldenrod", "green", "blue", "indigo", "violet"]
 
 for n in trials:
-    print(n)
+    print(f"\n=== Running trials for n_env = {n} ===")
     study = optuna.create_study(direction="maximize")
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
     study.optimize(lambda trial: objective(trial, n_env=n), n_trials=5)
+
+    best_trial = study.best_trial
+    avg_curve = best_trial.user_attrs["avg_curve"]
+    max_curve = best_trial.user_attrs["max_curve"]
+    best_runs[n] = (avg_curve, max_curve)
+
+    print(f"\n[Best trial for n_env={n}]")
+    print(f"  Episode Avg Reward: {best_trial.value:.2f}")
+    print(f"  Max Reward: {best_trial.user_attrs['max_reward']:.2f}")
+    print(f"  Hyperparameters:")
+    pprint(best_trial.user_attrs["hyperparams"])
+
+    avg_curve = best_trial.user_attrs["avg_curve"]
+    max_curve = best_trial.user_attrs["max_curve"]
+    best_runs[n] = (avg_curve, max_curve)
+
+    # Plot to the existing axes without clearing
+    color = colors[list(trials).index(n)]
+    ax.plot(avg_curve, linestyle="--", color=color, label=f"n_env={n} Avg")
+    ax.plot(max_curve, linestyle="-", color=color, label=f"n_env={n} Max")
+
+    ax.set_title("Best Training Reward Curves per n_env")
+    ax.set_xlabel("Episode")
+    ax.set_ylabel("Reward")
+    ax.grid(True)
+    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0)
+    
+    fig.canvas.draw()
+    fig.canvas.flush_events()
+    plt.pause(0.001)
+
+torch.save(best_actor_avg, "best_actor_avg.pth")
+torch.save(best_actor_max, "best_actor_max.pth")
+print("Saved best average and max reward actor networks.")
+
+plt.ioff()
+plt.show()
 

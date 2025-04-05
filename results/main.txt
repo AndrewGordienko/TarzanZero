@@ -1,0 +1,2 @@
+Episode 99 high score: 148.0 samples collected per episode on average 514.7474747474747 duration None max score time 8.278245210647583 n env 10
+
