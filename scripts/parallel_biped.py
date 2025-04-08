@@ -17,6 +17,9 @@ import optuna
 import matplotlib.pyplot as plt
 import gym
 from gym.vector import SyncVectorEnv
+import warnings
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 plt.ion()  # Interactive mode ON
 fig, ax = plt.subplots(figsize=(7, 4))  # Use subplot for persistent access
@@ -29,18 +32,18 @@ best_actor_max = None
 
 def objective(trial, n_env):
     hyperparams = {
-        "ACTOR_LR": trial.suggest_float("ACTOR_LR", 1e-5, 1e-3, log=True),
-        "CRITIC_LR": trial.suggest_float("CRITIC_LR", 1e-5, 1e-3, log=True),
-        "ENTROPY_COEF_INIT": trial.suggest_float("ENTROPY_COEF_INIT", 0.0, 0.1),
+        "ACTOR_LR": trial.suggest_float("ACTOR_LR", 1e-4, 5e-3, log=True),
+        "CRITIC_LR": trial.suggest_float("CRITIC_LR", 1e-4, 5e-3, log=True),
+        "ENTROPY_COEF_INIT": trial.suggest_float("ENTROPY_COEF_INIT", 0.01, 0.1),
         "ENTROPY_COEF_DECAY": trial.suggest_float("ENTROPY_COEF_DECAY", 0.9, 1.0),
         "GAMMA": trial.suggest_float("GAMMA", 0.9, 0.999),
         "LAMBDA": trial.suggest_float("LAMBDA", 0.9, 1.0),
         "KL_DIV_THRESHOLD": trial.suggest_float("KL_DIV_THRESHOLD", 0.001, 0.01),
         "BATCH_SIZE": trial.suggest_categorical("BATCH_SIZE", [512, 1024, 2048, 4096]),
         "CLIP_RATIO": trial.suggest_float("CLIP_RATIO", 0.1, 0.4),
-        "ENTROPY_COEF": trial.suggest_float("ENTROPY_COEF", 0.0, 0.01),
+        "ENTROPY_COEF": trial.suggest_float("ENTROPY_COEF", 0.01, 0.1),
         "VALUE_LOSS_COEF": trial.suggest_float("VALUE_LOSS_COEF", 0.1, 1.0),
-        "UPDATE_EPOCHS": trial.suggest_int("UPDATE_EPOCHS", 10, 30),
+        "UPDATE_EPOCHS": trial.suggest_int("UPDATE_EPOCHS", 3, 10),
         "MAX_GRAD_NORM": trial.suggest_float("MAX_GRAD_NORM", 0.1, 1.0),
     }
 
@@ -60,7 +63,7 @@ def make_env():
 
 def multi_trials(n_env, hyperparams):
     duration = None
-    num_episodes = 100
+    num_episodes = 1500
     recent_rows = []
     scroll_limit = 10
     console = Console()
@@ -78,6 +81,7 @@ def multi_trials(n_env, hyperparams):
     input_dims = env.observation_space.shape[0]
     n_actions = env.action_space.shape[0]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(device)
     agent = Agent(input_dims, n_actions, device, hyperparams)
     
     with Live(console=console, refresh_per_second=4) as live:
@@ -128,7 +132,8 @@ def multi_trials(n_env, hyperparams):
                 max_reward = current_max
                 max_score_time = time.time() - training_start
             episode_rewards.append(np.mean(env_rewards))
-            avg_reward = np.mean(episode_rewards)
+            recent_window = episode_rewards[-100:] if len(episode_rewards) >= 100 else episode_rewards
+            avg_reward = np.mean(recent_window)
             temp_avg.append(avg_reward)
             temp_best.append(max_reward)
 
@@ -190,14 +195,14 @@ def multi_trials(n_env, hyperparams):
 if __name__ == "__main__":
     multiprocessing.set_start_method("spawn", force=True)
 
-    trials = [1, 5, 10, 50, 100, 500]
+    trials = [10]
     colors = ["red", "orange", "goldenrod", "green", "blue", "indigo", "violet"]
 
     for n in trials:
         print(f"\n=== Running trials for n_env = {n} ===")
         study = optuna.create_study(direction="maximize")
         optuna.logging.set_verbosity(optuna.logging.WARNING)
-        study.optimize(lambda trial: objective(trial, n_env=n), n_trials=5)
+        study.optimize(lambda trial: objective(trial, n_env=n), n_trials=10)
 
         best_trial = study.best_trial
         avg_curve = best_trial.user_attrs["avg_curve"]
@@ -213,7 +218,8 @@ if __name__ == "__main__":
         avg_curve = best_trial.user_attrs["avg_curve"]
         max_curve = best_trial.user_attrs["max_curve"]
         best_runs[n] = (avg_curve, max_curve)
-
+        
+        
         # Plot to the existing axes without clearing
         color = colors[list(trials).index(n)]
         ax.plot(avg_curve, linestyle="--", color=color, label=f"n_env={n} Avg")
@@ -228,12 +234,11 @@ if __name__ == "__main__":
         fig.canvas.draw()
         fig.canvas.flush_events()
         plt.pause(0.001)
+        
 
     torch.save(best_actor_avg, "best_actor_avg.pth")
     torch.save(best_actor_max, "best_actor_max.pth")
     print("Saved best average and max reward actor networks.")
-
-    plt.ioff()
-    plt.show()
-
+        
+    plt.savefig("training_reward_curves.png", bbox_inches='tight')
 
